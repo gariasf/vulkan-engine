@@ -26,21 +26,17 @@ namespace lve {
 
 		void run();
 	private:
-		void sierpinski(
-			std::vector<LveModel::Vertex>& vertices,
-			int depth,
-			glm::vec2 left,
-			glm::vec2 right,
-			glm::vec2 top);
 		void loadModels();
 		void createPipelineLayout();
 		void createPipeline();
 		void createCommandBuffers();
 		void drawFrame();
+		void recreateSwapChain();
+		void recordCommandBuffer(int imageIndex);
 
 		LveWindow lveWindow{ WIDTH, HEIGHT, "Hello World" };
 		LveDevice lveDevice{ lveWindow };
-		LveSwapChain lveSwapChain{ lveDevice, lveWindow.getExtent() };
+		std::unique_ptr<LveSwapChain> lveSwapChain;
 		std::unique_ptr<LvePipeline> lvePipeline;
 		VkPipelineLayout pipelineLayout;
 		std::vector<VkCommandBuffer> commandBuffers;
