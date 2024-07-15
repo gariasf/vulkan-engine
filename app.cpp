@@ -48,7 +48,11 @@ namespace lve {
 	}
 	void App::createPipeline()
 	{
-		auto pipelineConfig = LvePipeline::defaultPipelineConfigInfo(lveSwapChain->width(), lveSwapChain->height());
+		assert(lveSwapChain != nullptr && "Cannot create pipeline before swap chain");
+		assert(pipelineLayout != nullptr && "Cannot create pipeline before pipeline layout");
+
+		PipelineConfigInfo pipelineConfig{};
+		LvePipeline::defaultPipelineConfigInfo(pipelineConfig);
 		pipelineConfig.renderPass = lveSwapChain->getRenderPass();
 		pipelineConfig.pipelineLayout = pipelineLayout;
 		lvePipeline = std::make_unique<LvePipeline>(
@@ -67,8 +71,20 @@ namespace lve {
 		}
 
 		vkDeviceWaitIdle(lveDevice.device());
-		lveSwapChain = nullptr;
-		lveSwapChain = std::make_unique<LveSwapChain>(lveDevice, extent);
+		
+		if (lveSwapChain == nullptr) {
+			lveSwapChain = std::make_unique<LveSwapChain>(lveDevice, extent);
+
+		}
+		else {
+			lveSwapChain = std::make_unique<LveSwapChain>(lveDevice, extent, std::move(lveSwapChain));
+
+			if (lveSwapChain->imageCount() != commandBuffers.size()) {
+				freeCommandBuffers();
+				createCommandBuffers();
+			}
+		}
+
 		createPipeline();
 	}
 
@@ -89,12 +105,17 @@ namespace lve {
 
 	}
 
+	void App::freeCommandBuffers() {
+		vkFreeCommandBuffers(lveDevice.device(), lveDevice.getCommandPool(), static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
+		commandBuffers.clear();
+	}
+
 	void App::recordCommandBuffer(int imageIndex) {
 		VkCommandBufferBeginInfo beginInfo{};
 		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
 		if (vkBeginCommandBuffer(commandBuffers[imageIndex], &beginInfo) != VK_SUCCESS) {
-			throw std::runtime_error("Failed to begin recording command buffer!");
+			throw std::runtime_error("failed to begin recording command buffer!");
 		}
 
 		VkRenderPassBeginInfo renderPassInfo{};
@@ -102,7 +123,7 @@ namespace lve {
 		renderPassInfo.renderPass = lveSwapChain->getRenderPass();
 		renderPassInfo.framebuffer = lveSwapChain->getFrameBuffer(imageIndex);
 
-		renderPassInfo.renderArea.offset = { 0,0 };
+		renderPassInfo.renderArea.offset = { 0, 0 };
 		renderPassInfo.renderArea.extent = lveSwapChain->getSwapChainExtent();
 
 		std::array<VkClearValue, 2> clearValues{};
@@ -111,8 +132,18 @@ namespace lve {
 		renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
 		renderPassInfo.pClearValues = clearValues.data();
 
-
 		vkCmdBeginRenderPass(commandBuffers[imageIndex], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+		VkViewport viewport{};
+		viewport.x = 0.0f;
+		viewport.y = 0.0f;
+		viewport.width = static_cast<float>(lveSwapChain->getSwapChainExtent().width);
+		viewport.height = static_cast<float>(lveSwapChain->getSwapChainExtent().height);
+		viewport.minDepth = 0.0f;
+		viewport.maxDepth = 1.0f;
+		VkRect2D scissor{ {0, 0}, lveSwapChain->getSwapChainExtent() };
+		vkCmdSetViewport(commandBuffers[imageIndex], 0, 1, &viewport);
+		vkCmdSetScissor(commandBuffers[imageIndex], 0, 1, &scissor);
 
 		lvePipeline->bind(commandBuffers[imageIndex]);
 
